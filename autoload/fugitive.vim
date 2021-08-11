@@ -5075,7 +5075,8 @@ function! fugitive#LogComplete(A, L, P) abort
 endfunction
 
 function! s:GrepParseLine(prefix, name_only, dir, line) abort
-  let entry = {'valid': 1}
+  echo a:line
+  let entry = {'valid': 1, 'raw': a:line}
   let match = matchlist(a:line, '^\(.\{-\}\):\(\d\+\):\(\d\+:\)\=\(.*\)$')
   if len(match)
     let entry.module = match[1]
@@ -5121,34 +5122,26 @@ function! s:GrepSubcommand(line1, line2, range, bang, mods, options) abort
   else
     call s:BlurStatus()
   endif
-  redraw
-  call s:QuickfixCreate(listnr, {'title': (listnr < 0 ? ':Git grep ' : ':0Git grep ') . s:fnameescape(args)})
+  let title = (listnr < 0 ? ':Git grep ' : ':0Git grep ') . s:fnameescape(args)
+  call s:QuickfixCreate(listnr, {'title': title})
   let tempfile = tempname()
   let event = listnr < 0 ? 'grep-fugitive' : 'lgrep-fugitive'
   silent exe s:DoAutocmd('QuickFixCmdPre ' . event)
   let prefix = FugitiveVimPath(s:HasOpt(args, '--cached') || empty(tree) ?
         \ 'fugitive://' . dir . '//0/' :
         \ s:cpath(getcwd(), tree) ? '' : tree . '/')
-  try
-    if exists('+guioptions') && &guioptions =~# '!'
-      let guioptions = &guioptions
-      set guioptions-=!
-    endif
-    exe '!' . escape(s:UserCommand(a:options, cmd + args), '%#!')
-          \ printf(&shellpipe . (&shellpipe =~# '%s' ? '' : ' %s'), s:shellesc(tempfile))
-  finally
-    if exists('guioptions')
-      let &guioptions = guioptions
-    endif
-  endtry
-  let list = map(readfile(tempfile), 's:GrepParseLine(prefix, name_only, dir, v:val)')
+  echo title
+  let list = s:SystemList(s:UserCommandList(a:options) + cmd + args)[0]
+  call map(list, 's:GrepParseLine(prefix, name_only, dir, v:val)')
   call s:QuickfixSet(listnr, list, 'a')
-  silent exe s:DoAutocmd('QuickFixCmdPost ' . event)
-  if !has('gui_running')
-    redraw
+  let shortfall = &cmdheight - len(list) - 1
+  if shortfall > 0
+    let trash = repeat("\n", (shortfall > 0) ? shortfall-1 : 0).repeat(' ', &columns - 1)."\r"
+    echo trash
   endif
+  silent exe s:DoAutocmd('QuickFixCmdPost ' . event)
   if !a:bang && !empty(list)
-    return (listnr < 0 ? 'c' : 'l').'first'
+    return '' . (listnr < 0 ? 'c' : 'l').'first'
   else
     return ''
   endif
